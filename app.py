@@ -1,130 +1,173 @@
 import streamlit as st
-import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Scanner Arbitragem PRO", layout="wide")
 
-st.title("📊 Scanner de Arbitragem Esportiva PRO")
+st.title("📊 Scanner Arbitragem Esportiva PRO")
 
-# =========================
-# CONFIGURAÇÃO
-# =========================
+# =====================
+# CONFIGURAÇÕES
+# =====================
 
-ARBITRAGEM_MINIMA = 1.5  # %
+ARBITRAGEM_MINIMA = st.sidebar.slider(
+    "Arbitragem mínima %",
+    0.5,
+    10.0,
+    1.5
+)
 
-# =========================
-# BASE SIMULADA (TEMPORÁRIA)
-# depois vamos conectar APIs reais
-# =========================
+filtro_live = st.sidebar.selectbox(
+    "Filtrar status",
+    ["Todos", "Ao vivo", "Pré‑jogo"]
+)
+
+filtro_esporte = st.sidebar.selectbox(
+    "Filtrar esporte",
+    ["Todos", "⚽ Futebol", "🏀 Basquete", "🎮 E‑sports"]
+)
+
+
+# =====================
+# BASE SIMULADA
+# =====================
 
 dados = [
     {
         "esporte": "⚽ Futebol",
         "liga": "Premier League",
         "jogo": "Liverpool vs Arsenal",
+        "data": "18/04/2026",
         "horario": "16:00",
         "live": True,
         "odds": [
-            ("Betano", "Liverpool", 2.12, "oficial"),
-            ("Bet365", "Empate", 3.40, "oficial"),
-            ("Pinnacle", "Arsenal", 3.80, "oficial"),
-            ("Futelrede", "Liverpool", 2.25, "indireto"),
+            ("Betano", "Liverpool", 2.12),
+            ("Bet365", "Empate", 3.40),
+            ("Pinnacle", "Arsenal", 3.80),
         ]
     },
-
     {
         "esporte": "🎮 E‑sports",
         "liga": "CS2 Major",
         "jogo": "FURIA vs NAVI",
+        "data": "19/04/2026",
         "horario": "14:30",
         "live": False,
         "odds": [
-            ("Betano", "FURIA", 2.20, "oficial"),
-            ("Pinnacle", "NAVI", 2.05, "oficial"),
-            ("Superbet-net", "FURIA", 2.32, "indireto"),
-        ]
-    },
-
-    {
-        "esporte": "🏀 Basquete",
-        "liga": "NBA",
-        "jogo": "Lakers vs Celtics",
-        "horario": "21:00",
-        "live": False,
-        "odds": [
-            ("Bet365", "Lakers", 2.30, "oficial"),
-            ("Betano", "Celtics", 1.95, "oficial"),
-            ("Esportenet", "Lakers", 2.40, "indireto"),
+            ("Betano", "FURIA", 2.20),
+            ("Pinnacle", "NAVI", 2.05),
         ]
     }
 ]
 
 
-# =========================
+# =====================
 # FUNÇÃO ARBITRAGEM
-# =========================
+# =====================
 
 def calcular_arbitragem(odds):
 
-    melhores_odds = {}
+    melhores = {}
 
-    for casa, resultado, odd, tipo in odds:
+    for casa, resultado, odd in odds:
 
-        if resultado not in melhores_odds:
-            melhores_odds[resultado] = (casa, odd)
+        if resultado not in melhores:
+            melhores[resultado] = (casa, odd)
 
-        else:
-            if odd > melhores_odds[resultado][1]:
-                melhores_odds[resultado] = (casa, odd)
+        elif odd > melhores[resultado][1]:
+            melhores[resultado] = (casa, odd)
 
-    soma = sum(1 / odd for casa, odd in melhores_odds.values())
+    soma = sum(1 / odd for casa, odd in melhores.values())
 
     if soma < 1:
 
         lucro = (1 - soma) * 100
 
-        return True, lucro, melhores_odds
+        return True, lucro, melhores
 
-    return False, 0, melhores_odds
+    return False, 0, melhores
 
 
-# =========================
+# =====================
+# CONTADOR REGRESSIVO
+# =====================
+
+def tempo_restante(data, horario):
+
+    jogo = datetime.strptime(
+        data + " " + horario,
+        "%d/%m/%Y %H:%M"
+    )
+
+    agora = datetime.now()
+
+    if jogo > agora:
+
+        restante = jogo - agora
+
+        horas = restante.seconds // 3600
+
+        minutos = (restante.seconds % 3600) // 60
+
+        return f"⏳ começa em {horas}h {minutos}m"
+
+    return "🔴 já começou"
+
+
+# =====================
 # EXIBIÇÃO
-# =========================
+# =====================
 
 for evento in dados:
 
     arbitragem, lucro, melhores = calcular_arbitragem(evento["odds"])
 
-    if arbitragem and lucro >= ARBITRAGEM_MINIMA:
+    if not arbitragem:
+        continue
 
-        status_live = "🔴 AO VIVO" if evento["live"] else "🟢 PRÉ‑JOGO"
+    if lucro < ARBITRAGEM_MINIMA:
+        continue
 
-        st.subheader(f"{status_live} — {evento['esporte']}")
+    if filtro_live == "Ao vivo" and not evento["live"]:
+        continue
 
-        st.write(f"🏆 {evento['liga']}")
-        st.write(f"⚔️ {evento['jogo']}")
-        st.write(f"🕐 {evento['horario']}")
+    if filtro_live == "Pré‑jogo" and evento["live"]:
+        continue
 
-        st.write("### Casas utilizadas na arbitragem:")
+    if filtro_esporte != "Todos" and evento["esporte"] != filtro_esporte:
+        continue
 
-        for resultado, (casa, odd) in melhores.items():
+    status = "🔴 AO VIVO" if evento["live"] else "🟢 PRÉ‑JOGO"
 
-            st.write(f"{casa} → {resultado} @ {odd}")
+    st.subheader(f"{status} — {evento['esporte']}")
 
-        st.success(f"📈 Arbitragem detectada: {round(lucro,2)}%")
+    st.write(f"🏆 {evento['liga']}")
+    st.write(f"⚔️ {evento['jogo']}")
+    st.write(f"📅 {evento['data']}")
+    st.write(f"🕐 {evento['horario']}")
 
-        investimento = st.number_input(
-            f"Valor aposta ({evento['jogo']})",
-            min_value=10.0,
-            value=100.0,
-            key=evento["jogo"]
-        )
+    if not evento["live"]:
+        st.caption(tempo_restante(evento["data"], evento["horario"]))
 
-        lucro_estimado = investimento * (lucro / 100)
+    st.write("### Casas arbitragem:")
 
-        st.info(f"💰 Lucro estimado: R$ {round(lucro_estimado,2)}")
+    for resultado, (casa, odd) in melhores.items():
+        st.write(f"{casa} → {resultado} @ {odd}")
 
-        st.caption(f"⏱️ Atualizado: {datetime.now().strftime('%H:%M:%S')}")
+    st.success(f"📈 Arbitragem: {round(lucro,2)}%")
 
-        st.divider()
+    stake_total = st.number_input(
+        f"Valor aposta {evento['jogo']}",
+        min_value=10.0,
+        value=100.0,
+        key=evento["jogo"]
+    )
+
+    lucro_estimado = stake_total * (lucro / 100)
+
+    st.info(f"💰 Lucro estimado: R$ {round(lucro_estimado,2)}")
+
+    st.caption(
+        f"⏱️ Atualizado: {datetime.now().strftime('%H:%M:%S')}"
+    )
+
+    st.divider()
